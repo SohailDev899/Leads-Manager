@@ -1,12 +1,18 @@
+// ---------- DEBUG: PEHLE CHECK KARO ----------
+console.log('🚀 Script loaded');
+console.log('Current path:', window.location.pathname);
+console.log('Session user:', localStorage.getItem('leadmanager_session'));
+
 // ---------- CONFIGURATION ----------
+// SIRF EK BAAR VALID_USERS DEFINE KARO
 const VALID_USERS = [
-    { email: 'sohail@lead.co', password: 'alpha', name: 'sohail', telegramId: '1935946442' }, // sohail ka Telegram ID
-    { email: 'angad@lead.co', password: 'beta', name: 'angad', telegramId: '7312373408' },     // angad ka Telegram ID
-    { email: 'kishan@lead.co', password: 'gamma', name: 'kishan', telegramId: '1757459881' } // kishan ka Telegram ID
+    { email: 'sohail@lead.co', password: 'alpha', name: 'Sohail', telegramId: '1935946442' },
+    { email: 'angad@lead.co', password: 'beta', name: 'Angad', telegramId: '7312373408' },
+    { email: 'kishan@lead.co', password: 'gamma', name: 'Kishan', telegramId: '1757459881' }
 ];
 
-// Telegram Bot Configuration ( @BotFather se lo )
-const TELEGRAM_BOT_TOKEN = '8591307982:AAEc2CGvK1a2hk5aO9prS1HAhw3AhjxNpTc';
+// Telegram Bot Configuration - AB ENABLE KARO
+const TELEGRAM_BOT_TOKEN = '8591307982:AAEc2CGvK1a2hk5aO9prS1HAhw3AhjxNpTc'; // Token enable kiya
 
 const STORAGE_KEYS = {
     SESSION: 'leadmanager_session',
@@ -24,11 +30,12 @@ const INDIAN_CITIES = [
     'Vadodara', 'Guwahati', 'Chandigarh', 'Other'
 ];
 
-// ---------- TELEGRAM NOTIFICATION SYSTEM (Optional) ----------
+// ---------- TELEGRAM NOTIFICATION SYSTEM ----------
 class TelegramNotifier {
     constructor() {
         this.botToken = TELEGRAM_BOT_TOKEN;
         this.isEnabled = this.botToken && this.botToken !== null;
+        console.log('📱 Telegram enabled:', this.isEnabled);
     }
 
     async notifyAllUsers(message, excludeUser = null) {
@@ -38,6 +45,7 @@ class TelegramNotifier {
         }
 
         const usersToNotify = VALID_USERS.filter(u => u.email !== excludeUser && u.telegramId);
+        console.log('Sending to users:', usersToNotify.map(u => u.name));
         
         for (const user of usersToNotify) {
             if (user.telegramId) {
@@ -62,13 +70,19 @@ class TelegramNotifier {
                     disable_notification: false
                 })
             });
+            
+            if (response.ok) {
+                console.log('✅ Telegram message sent to', chatId);
+            } else {
+                console.log('❌ Telegram failed:', await response.text());
+            }
         } catch (error) {
             console.error('Telegram error:', error);
         }
     }
 }
 
-// Initialize Telegram notifier (safely)
+// Initialize Telegram notifier
 const telegram = new TelegramNotifier();
 
 // ---------- NOTIFICATION SYSTEM (In-app) ----------
@@ -79,8 +93,7 @@ class NotificationSystem {
     }
 
     init() {
-        // Pehle check karo container exist karta hai ya nahi
-        if (!document.getElementById('app-root')) return;
+        if (!document.body) return;
         
         this.container = document.createElement('div');
         this.container.className = 'notification-container';
@@ -141,11 +154,24 @@ function addLeadWithNotification(leadData, user) {
     saveLeads(leads);
     
     // In-app notification
-    if (notifier) {
-        notifier.show('success', 'New Lead Added', 
-            `${leadData.name} from ${leadData.city} - Budget: ₹${leadData.budget || 0}`
-        );
-    }
+    notifier.show('success', 'New Lead Added', 
+        `${leadData.name} from ${leadData.city} - Budget: ₹${leadData.budget || 0}`
+    );
+    
+    // Telegram notification
+    const message = `
+🟢 <b>NEW LEAD ADDED</b>
+━━━━━━━━━━━━━━━
+👤 <b>Client:</b> ${leadData.name}
+🏙️ <b>City:</b> ${leadData.city}
+🏢 <b>Business:</b> ${leadData.business}
+💰 <b>Budget:</b> ₹${leadData.budget || 0}
+📄 <b>Pages:</b> ${leadData.pages || 1}
+👨‍💻 <b>Added by:</b> ${user.name}
+🕐 <b>Time:</b> ${new Date().toLocaleString('en-IN')}
+    `;
+    
+    telegram.notifyAllUsers(message, user.email);
     
     return newLead;
 }
@@ -167,11 +193,20 @@ function updateLeadWithNotification(leadId, updates, user) {
         saveLeads(leads);
         
         // In-app notification
-        if (notifier) {
-            notifier.show('info', 'Lead Updated', 
-                `${oldData.name} - Updated`
-            );
-        }
+        notifier.show('info', 'Lead Updated', `${oldData.name} - Updated`);
+        
+        // Telegram notification
+        const changes = Object.keys(updates).map(k => `${k}: ${updates[k]}`).join(', ');
+        const message = `
+📝 <b>LEAD UPDATED</b>
+━━━━━━━━━━━━━━━
+👤 <b>Client:</b> ${oldData.name}
+✏️ <b>Changes:</b> ${changes}
+👨‍💻 <b>Updated by:</b> ${user.name}
+🕐 <b>Time:</b> ${new Date().toLocaleString('en-IN')}
+        `;
+        
+        telegram.notifyAllUsers(message, user.email);
         
         return leads[leadIndex];
     }
@@ -184,11 +219,18 @@ function deleteLeadWithNotification(leadId, leadData, user) {
     saveLeads(updatedLeads);
     
     // In-app notification
-    if (notifier) {
-        notifier.show('warning', 'Lead Deleted', 
-            `${leadData.name} was removed`
-        );
-    }
+    notifier.show('warning', 'Lead Deleted', `${leadData.name} was removed`);
+    
+    // Telegram notification
+    const message = `
+🔴 <b>LEAD DELETED</b>
+━━━━━━━━━━━━━━━
+👤 <b>Client:</b> ${leadData.name}
+👨‍💻 <b>Deleted by:</b> ${user.name}
+🕐 <b>Time:</b> ${new Date().toLocaleString('en-IN')}
+    `;
+    
+    telegram.notifyAllUsers(message, user.email);
 }
 
 // ---------- DATE GROUPING ----------
@@ -510,7 +552,7 @@ function attachDashboardEvents(user) {
     // Add lead
     const addBtn = document.getElementById('addLeadBtn');
     if (addBtn) {
-        addBtn.addEventListener('click', () => {
+        addBtn.addEventListener('click', () =>
             const name = document.getElementById('new-name')?.value.trim();
             const business = document.getElementById('new-business')?.value.trim();
             const phone = document.getElementById('new-phone')?.value.trim();
@@ -573,39 +615,69 @@ function attachDashboardEvents(user) {
     window.addEventListener('hashchange', () => refreshDashboard());
 }
 
-// ---------- LOGIN ----------
-function attachLoginEvents() {
-    const loginBtn = document.getElementById('login-btn');
-    const passInput = document.getElementById('login-password');
-    
-    if (loginBtn) {
-        loginBtn.addEventListener('click', doLogin);
-    }
-    
-    if (passInput) {
-        passInput.addEventListener('keypress', (e) => {
-            if (e.key === 'Enter') doLogin();
-        });
-    }
-}
-
+// ---------- LOGIN FUNCTION ----------
 function doLogin() {
+    console.log('🔑 Login function called');
+    
     const email = document.getElementById('login-email')?.value.trim();
     const pass = document.getElementById('login-password')?.value.trim();
+    
+    console.log('Email entered:', email);
+    
     const user = VALID_USERS.find(u => u.email === email && u.password === pass);
     
     if (user) {
-        setSession({ email: user.email, name: user.name });
+        console.log('✅ Login successful for:', user.name);
+        
+        // Save session
+        localStorage.setItem(STORAGE_KEYS.SESSION, JSON.stringify({
+            email: user.email,
+            name: user.name
+        }));
+        
+        // Show notification
         if (notifier) {
             notifier.show('success', 'Welcome!', `Logged in as ${user.name}`);
         }
-        window.location.replace('dashboard.html');
+        
+        // Redirect to dashboard
+        window.location.href = 'dashboard.html';
     } else {
+        console.log('❌ Login failed for:', email);
         const errorDiv = document.getElementById('login-error');
         if (errorDiv) {
             errorDiv.style.display = 'block';
             errorDiv.innerText = '❌ Invalid email or password';
         }
+    }
+}
+
+// ---------- ATTACH LOGIN EVENTS ----------
+function attachLoginEvents() {
+    console.log('📝 Attaching login events');
+    
+    const loginBtn = document.getElementById('login-btn');
+    const passInput = document.getElementById('login-password');
+    const emailInput = document.getElementById('login-email');
+    
+    console.log('Login button found:', loginBtn ? '✅' : '❌');
+    console.log('Password input found:', passInput ? '✅' : '❌');
+    console.log('Email input found:', emailInput ? '✅' : '❌');
+    
+    if (loginBtn) {
+        loginBtn.addEventListener('click', function(e) {
+            e.preventDefault();
+            doLogin();
+        });
+    }
+    
+    if (passInput) {
+        passInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                doLogin();
+            }
+        });
     }
 }
 
@@ -663,16 +735,40 @@ function clearSession() {
     localStorage.removeItem(STORAGE_KEYS.SESSION);
 }
 
-// ---------- INITIALIZATION ----------
+// ---------- MAIN INITIALIZATION ----------
 function init() {
+    console.log('🔧 Initializing app...');
+    
     const path = window.location.pathname.split('/').pop() || 'index.html';
+    console.log('📁 Current file:', path);
+    
     const user = getSessionUser();
+    console.log('Session user:', user ? user.email : 'none');
 
-    if (path === 'dashboard.html') {
+    // Login page
+    if (path === 'index.html') {
+        console.log('📝 On login page');
+        
+        if (user) {
+            console.log('➡️ Already logged in, redirecting to dashboard');
+            window.location.replace('dashboard.html');
+            return;
+        }
+        
+        attachLoginEvents();
+    }
+    
+    // Dashboard page
+    else if (path === 'dashboard.html') {
+        console.log('📊 On dashboard page');
+        
         if (!user) {
+            console.log('🚫 No session, redirecting to login');
             window.location.replace('index.html');
             return;
         }
+        
+        console.log('✅ Session valid, rendering dashboard for:', user.name);
         
         const hash = window.location.hash.substring(1);
         const params = new URLSearchParams(hash);
@@ -680,23 +776,21 @@ function init() {
         const activeCity = params.get('city') || 'all';
         
         const container = document.getElementById('dashboard-container');
+        
         if (container) {
             container.innerHTML = renderDashboard(user, activeTab, activeCity);
             attachDashboardEvents(user);
+            console.log('✅ Dashboard rendered');
+        } else {
+            console.error('❌ dashboard-container not found!');
         }
-    } else if (path === 'index.html' || path === '') {
-        if (user) {
-            window.location.replace('dashboard.html');
-            return;
-        }
-        attachLoginEvents();
     }
 }
 
-// Start app when DOM is ready
+// Start app
+console.log('🏁 Starting app...');
 if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', init);
 } else {
     init();
-}
-```
+                }
