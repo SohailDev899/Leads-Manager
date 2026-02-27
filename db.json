@@ -1,0 +1,10 @@
+{
+  "leads": [
+    {
+      "id": "1",
+      "name": "Test Lead",
+      "city": "Mumbai",
+      "budget": 50000
+    }
+  ]
+}
