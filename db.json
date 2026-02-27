@@ -3,8 +3,16 @@
     {
       "id": "1",
       "name": "Test Lead",
+      "business": "Tech Solutions",
+      "phone": "9876543210",
       "city": "Mumbai",
-      "budget": 50000
+      "budget": "50000",
+      "pages": "5",
+      "requirements": "E-commerce website",
+      "status": "Interested",
+      "note": "Call tomorrow",
+      "createdAt": "2024-02-27T10:00:00.000Z",
+      "updatedAt": "2024-02-27T10:00:00.000Z"
     }
   ]
 }
