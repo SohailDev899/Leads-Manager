@@ -460,3 +460,138 @@ td .budget-display {
     font-weight: 600;
     color: #0f2c4f;
 }
+
+/* Add to existing style.css */
+
+.notification-container {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    z-index: 9999;
+    max-width: 350px;
+}
+
+.notification {
+    background: white;
+    border-radius: 12px;
+    padding: 1rem;
+    margin-bottom: 10px;
+    box-shadow: 0 5px 20px rgba(0,0,0,0.15);
+    border-left: 4px solid;
+    animation: slideIn 0.3s ease;
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+}
+
+.notification.success { border-left-color: #10b981; }
+.notification.warning { border-left-color: #f59e0b; }
+.notification.info { border-left-color: #3b7cff; }
+.notification.error { border-left-color: #ef4444; }
+
+@keyframes slideIn {
+    from {
+        transform: translateX(100%);
+        opacity: 0;
+    }
+    to {
+        transform: translateX(0);
+        opacity: 1;
+    }
+}
+
+.lead-tabs {
+    display: flex;
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+    border-bottom: 2px solid #e9edf2;
+    padding-bottom: 0.5rem;
+    flex-wrap: wrap;
+}
+
+.tab-btn {
+    padding: 0.6rem 1.5rem;
+    background: none;
+    border: none;
+    font-size: 0.95rem;
+    font-weight: 500;
+    color: #64748b;
+    cursor: pointer;
+    border-radius: 30px;
+    transition: all 0.2s;
+}
+
+.tab-btn:hover {
+    color: #1a3e6f;
+    background: #f1f5f9;
+}
+
+.tab-btn.active {
+    color: #1a3e6f;
+    background: #e8edf5;
+}
+
+.tab-btn .count {
+    background: #e2e8f0;
+    padding: 2px 8px;
+    border-radius: 20px;
+    font-size: 0.75rem;
+    margin-left: 6px;
+}
+
+.city-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    background: #f0f9ff;
+    color: #0369a1;
+    padding: 0.2rem 0.8rem;
+    border-radius: 30px;
+    font-size: 0.8rem;
+    font-weight: 500;
+    margin-top: 4px;
+}
+
+.date-separator {
+    background: #f8fafd;
+    padding: 0.5rem 1.2rem;
+    font-weight: 600;
+    color: #1e293b;
+    border-bottom: 1px solid #e2e8f0;
+}
+
+.date-badge {
+    background: #1a3e6f;
+    color: white;
+    padding: 0.2rem 0.8rem;
+    border-radius: 30px;
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    margin-right: 8px;
+}
+
+.today-badge {
+    background: #10b981;
+}
+
+.city-filters {
+    display: flex;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+    margin-bottom: 1rem;
+}
+
+.city-filter {
+    padding: 0.3rem 1rem;
+    border: 1px solid #d4dee9;
+    border-radius: 30px;
+    background: white;
+    font-size: 0.8rem;
+    cursor: pointer;
+}
+
+.city-filter.active {
+    background: #1a3e6f;
+    color: white;
+    border-color: #1a3e6f;
+    }
