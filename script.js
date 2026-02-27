@@ -4,15 +4,14 @@ console.log('Current path:', window.location.pathname);
 console.log('Session user:', localStorage.getItem('leadmanager_session'));
 
 // ---------- CONFIGURATION ----------
-// SIRF EK BAAR VALID_USERS DEFINE KARO
 const VALID_USERS = [
     { email: 'sohail@lead.co', password: 'alpha', name: 'Sohail', telegramId: '1935946442' },
     { email: 'angad@lead.co', password: 'beta', name: 'Angad', telegramId: '7312373408' },
     { email: 'kishan@lead.co', password: 'gamma', name: 'Kishan', telegramId: '1757459881' }
 ];
 
-// Telegram Bot Configuration - AB ENABLE KARO
-const TELEGRAM_BOT_TOKEN = '8591307982:AAEc2CGvK1a2hk5aO9prS1HAhw3AhjxNpTc'; // Token enable kiya
+// Telegram Bot Configuration
+const TELEGRAM_BOT_TOKEN = '8591307982:AAEc2CGvK1a2hk5aO9prS1HAhw3AhjxNpTc';
 
 const STORAGE_KEYS = {
     SESSION: 'leadmanager_session',
@@ -22,7 +21,7 @@ const STORAGE_KEYS = {
 
 const STATUS_OPTIONS = ['Interested', 'Not Interested', 'Follow Up', 'No Response'];
 
-// Indian cities
+// Indian cities with Other option
 const INDIAN_CITIES = [
     'Mumbai', 'Delhi', 'Bangalore', 'Hyderabad', 'Ahmedabad',
     'Chennai', 'Kolkata', 'Pune', 'Jaipur', 'Lucknow',
@@ -30,12 +29,122 @@ const INDIAN_CITIES = [
     'Vadodara', 'Guwahati', 'Chandigarh', 'Other'
 ];
 
-// ---------- TELEGRAM NOTIFICATION SYSTEM ----------
+// ---------- TELEGRAM NOTIFICATION SYSTEM WITH USER COLORS ----------
 class TelegramNotifier {
     constructor() {
         this.botToken = TELEGRAM_BOT_TOKEN;
         this.isEnabled = this.botToken && this.botToken !== null;
+        
+        // Har user ke liye alag color code
+        this.userColors = {
+            'sohail@lead.co': {
+                name: 'Sohail',
+                emoji: '👨‍💻',
+                colorCode: '#FF6B6B',     // Light Red
+                bgCode: '#FFE5E5'          // Light Pink Background
+            },
+            'angad@lead.co': {
+                name: 'Angad',
+                emoji: '👨‍🔧',
+                colorCode: '#4ECDC4',       // Turquoise
+                bgCode: '#E0F5F2'            // Light Turquoise Background
+            },
+            'kishan@lead.co': {
+                name: 'Kishan',
+                emoji: '👨‍🎨',
+                colorCode: '#A890FE',        // Purple
+                bgCode: '#F0E8FF'             // Light Purple Background
+            }
+        };
+        
         console.log('📱 Telegram enabled:', this.isEnabled);
+        if (this.isEnabled) {
+            console.log('🎨 User colors loaded for:', Object.keys(this.userColors).join(', '));
+        }
+    }
+
+    // User ke hisaab se HTML message banayein
+    getUserStyledMessage(user, action, data) {
+        const userStyle = this.userColors[user.email] || {
+            name: user.name,
+            emoji: '👤',
+            colorCode: '#000000',
+            bgCode: '#F0F0F0'
+        };
+
+        const actionEmoji = {
+            'add': '🟢',
+            'update': '📝',
+            'delete': '🔴'
+        };
+
+        const emoji = actionEmoji[action] || '📢';
+        const actionText = action.toUpperCase();
+
+        // HTML formatted message with colors
+        return `
+${emoji} <b>LEAD ${actionText}</b> | <span style="color:${userStyle.colorCode}">${userStyle.emoji} ${userStyle.name}</span>
+━━━━━━━━━━━━━━━━━━━━
+👤 <b>Client:</b> ${data.clientName}
+🏙️ <b>City:</b> ${data.city}
+🏢 <b>Business:</b> ${data.business || 'N/A'}
+💰 <b>Budget:</b> ₹${data.budget || 0}
+📄 <b>Pages:</b> ${data.pages || 1}
+📊 <b>Status:</b> ${data.status || 'New'}
+
+<span style="color:#666666; font-size:0.9em">
+🕐 ${new Date().toLocaleString('en-IN')}
+</span>`;
+    }
+
+    // Update ke liye alag format
+    getUpdateStyledMessage(user, oldData, updates) {
+        const userStyle = this.userColors[user.email] || {
+            name: user.name,
+            emoji: '👤',
+            colorCode: '#000000',
+            bgCode: '#F0F0F0'
+        };
+
+        // Changes ko format karo
+        const changesList = Object.keys(updates).map(key => {
+            const oldVal = oldData[key] || 'empty';
+            const newVal = updates[key];
+            return `  • <b>${key}:</b> <span style="color:#FF6B6B">${oldVal}</span> → <span style="color:#4ECDC4">${newVal}</span>`;
+        }).join('\n');
+
+        return `
+📝 <b>LEAD UPDATED</b> | <span style="color:${userStyle.colorCode}">${userStyle.emoji} ${userStyle.name}</span>
+━━━━━━━━━━━━━━━━━━━━
+👤 <b>Client:</b> ${oldData.name}
+🏙️ <b>City:</b> ${oldData.city}
+
+✏️ <b>Changes:</b>
+${changesList}
+
+<span style="color:#666666; font-size:0.9em">
+🕐 ${new Date().toLocaleString('en-IN')}
+</span>`;
+    }
+
+    // Delete ke liye format
+    getDeleteStyledMessage(user, leadData) {
+        const userStyle = this.userColors[user.email] || {
+            name: user.name,
+            emoji: '👤',
+            colorCode: '#000000',
+            bgCode: '#F0F0F0'
+        };
+
+        return `
+🔴 <b>LEAD DELETED</b> | <span style="color:${userStyle.colorCode}">${userStyle.emoji} ${userStyle.name}</span>
+━━━━━━━━━━━━━━━━━━━━
+👤 <b>Client:</b> ${leadData.name}
+🏙️ <b>City:</b> ${leadData.city}
+
+<span style="color:#666666; font-size:0.9em">
+🕐 ${new Date().toLocaleString('en-IN')}
+</span>`;
     }
 
     async notifyAllUsers(message, excludeUser = null) {
@@ -45,7 +154,7 @@ class TelegramNotifier {
         }
 
         const usersToNotify = VALID_USERS.filter(u => u.email !== excludeUser && u.telegramId);
-        console.log('Sending to users:', usersToNotify.map(u => u.name));
+        console.log('📨 Sending to users:', usersToNotify.map(u => u.name).join(', '));
         
         for (const user of usersToNotify) {
             if (user.telegramId) {
@@ -74,7 +183,8 @@ class TelegramNotifier {
             if (response.ok) {
                 console.log('✅ Telegram message sent to', chatId);
             } else {
-                console.log('❌ Telegram failed:', await response.text());
+                const error = await response.text();
+                console.log('❌ Telegram failed:', error);
             }
         } catch (error) {
             console.error('Telegram error:', error);
@@ -138,7 +248,38 @@ class NotificationSystem {
 
 const notifier = new NotificationSystem();
 
-// ---------- LEAD OPERATIONS ----------
+// ---------- CUSTOM CITY FUNCTIONS ----------
+// Toggle custom city input when "Other" is selected
+window.toggleCustomCity = function(selectElement) {
+    const customInput = document.getElementById('new-city-custom');
+    if (selectElement.value === 'Other') {
+        customInput.style.display = 'block';
+        customInput.required = true;
+        customInput.focus();
+    } else {
+        customInput.style.display = 'none';
+        customInput.required = false;
+        customInput.value = '';
+    }
+};
+
+// Get final city value (from select or custom input)
+function getCityValue() {
+    const select = document.getElementById('new-city');
+    const customInput = document.getElementById('new-city-custom');
+    
+    if (select.value === 'Other') {
+        const customCity = customInput.value.trim();
+        if (!customCity) {
+            alert('Please enter city name');
+            return null;
+        }
+        return customCity;
+    }
+    return select.value;
+}
+
+// ---------- LEAD OPERATIONS WITH COLOR NOTIFICATIONS ----------
 function addLeadWithNotification(leadData, user) {
     const leads = loadLeads();
     const newLead = {
@@ -158,18 +299,15 @@ function addLeadWithNotification(leadData, user) {
         `${leadData.name} from ${leadData.city} - Budget: ₹${leadData.budget || 0}`
     );
     
-    // Telegram notification
-    const message = `
-🟢 <b>NEW LEAD ADDED</b>
-━━━━━━━━━━━━━━━
-👤 <b>Client:</b> ${leadData.name}
-🏙️ <b>City:</b> ${leadData.city}
-🏢 <b>Business:</b> ${leadData.business}
-💰 <b>Budget:</b> ₹${leadData.budget || 0}
-📄 <b>Pages:</b> ${leadData.pages || 1}
-👨‍💻 <b>Added by:</b> ${user.name}
-🕐 <b>Time:</b> ${new Date().toLocaleString('en-IN')}
-    `;
+    // Color-coded Telegram notification
+    const message = telegram.getUserStyledMessage(user, 'add', {
+        clientName: leadData.name,
+        city: leadData.city,
+        business: leadData.business,
+        budget: leadData.budget,
+        pages: leadData.pages,
+        status: leadData.status
+    });
     
     telegram.notifyAllUsers(message, user.email);
     
@@ -195,17 +333,8 @@ function updateLeadWithNotification(leadId, updates, user) {
         // In-app notification
         notifier.show('info', 'Lead Updated', `${oldData.name} - Updated`);
         
-        // Telegram notification
-        const changes = Object.keys(updates).map(k => `${k}: ${updates[k]}`).join(', ');
-        const message = `
-📝 <b>LEAD UPDATED</b>
-━━━━━━━━━━━━━━━
-👤 <b>Client:</b> ${oldData.name}
-✏️ <b>Changes:</b> ${changes}
-👨‍💻 <b>Updated by:</b> ${user.name}
-🕐 <b>Time:</b> ${new Date().toLocaleString('en-IN')}
-        `;
-        
+        // Color-coded Telegram update notification
+        const message = telegram.getUpdateStyledMessage(user, oldData, updates);
         telegram.notifyAllUsers(message, user.email);
         
         return leads[leadIndex];
@@ -221,15 +350,8 @@ function deleteLeadWithNotification(leadId, leadData, user) {
     // In-app notification
     notifier.show('warning', 'Lead Deleted', `${leadData.name} was removed`);
     
-    // Telegram notification
-    const message = `
-🔴 <b>LEAD DELETED</b>
-━━━━━━━━━━━━━━━
-👤 <b>Client:</b> ${leadData.name}
-👨‍💻 <b>Deleted by:</b> ${user.name}
-🕐 <b>Time:</b> ${new Date().toLocaleString('en-IN')}
-    `;
-    
+    // Color-coded Telegram delete notification
+    const message = telegram.getDeleteStyledMessage(user, leadData);
     telegram.notifyAllUsers(message, user.email);
 }
 
@@ -289,8 +411,9 @@ function renderDashboard(user, activeTab = 'today', activeCity = 'all') {
         });
     }
     
-    // Get unique cities
-    const cities = ['all', ...new Set(leads.map(l => l.city).filter(Boolean))];
+    // Get unique cities (including custom ones)
+    const allCities = leads.map(l => l.city).filter(Boolean);
+    const cities = ['all', ...new Set(allCities)];
     
     // Calculate totals
     const totalBudget = leads.reduce((sum, l) => sum + (parseInt(l.budget) || 0), 0);
@@ -363,7 +486,7 @@ function renderDashboard(user, activeTab = 'today', activeCity = 'all') {
                 `).join('')}
             </div>
 
-            <!-- Add Lead Form -->
+            <!-- Add Lead Form with Custom City -->
             <h2>Add New Lead</h2>
             <div class="lead-form" id="addLeadForm">
                 <div class="form-group">
@@ -380,9 +503,11 @@ function renderDashboard(user, activeTab = 'today', activeCity = 'all') {
                 </div>
                 <div class="form-group">
                     <label>City *</label>
-                    <select id="new-city" class="city-select">
+                    <select id="new-city" class="city-select" onchange="toggleCustomCity(this)">
                         ${INDIAN_CITIES.map(city => `<option value="${city}">${city}</option>`).join('')}
                     </select>
+                    <input type="text" id="new-city-custom" class="city-select" 
+                           placeholder="Enter city name" style="display: none; margin-top: 8px;">
                 </div>
                 <div class="form-group">
                     <label>Budget (₹)</label>
@@ -556,14 +681,18 @@ function attachDashboardEvents(user) {
             const name = document.getElementById('new-name')?.value.trim();
             const business = document.getElementById('new-business')?.value.trim();
             const phone = document.getElementById('new-phone')?.value.trim();
-            const city = document.getElementById('new-city')?.value;
+            
+            // Get city value using custom city function
+            const city = getCityValue();
+            if (!city) return; // getCityValue already shows alert
+            
             const budget = document.getElementById('new-budget')?.value;
             const pages = document.getElementById('new-pages')?.value || '1';
             const requirements = document.getElementById('new-requirements')?.value.trim();
             const status = document.getElementById('new-status')?.value;
             const note = document.getElementById('new-note')?.value.trim();
 
-            if (!name || !business || !phone || !city) {
+            if (!name || !business || !phone) {
                 alert('Please fill all required fields');
                 return;
             }
@@ -582,6 +711,13 @@ function attachDashboardEvents(user) {
             document.getElementById('new-business').value = '';
             document.getElementById('new-phone').value = '';
             document.getElementById('new-city').value = INDIAN_CITIES[0];
+            
+            // Hide and clear custom city input
+            const customInput = document.getElementById('new-city-custom');
+            customInput.style.display = 'none';
+            customInput.value = '';
+            customInput.required = false;
+            
             document.getElementById('new-budget').value = '';
             document.getElementById('new-pages').value = '1';
             document.getElementById('new-requirements').value = '';
