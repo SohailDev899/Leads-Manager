@@ -10,12 +10,12 @@ const STATUS_OPTIONS = ['Interested', 'Not Interested', 'Follow Up', 'No Respons
 
 // 🔥 APNA FIREBASE CONFIG YAHAN DALO
 const firebaseConfig = {
-    apiKey: "YOUR_API_KEY",
-    authDomain: "YOUR_AUTH_DOMAIN",
-    projectId: "YOUR_PROJECT_ID",
-    storageBucket: "YOUR_STORAGE_BUCKET",
-    messagingSenderId: "YOUR_SENDER_ID",
-    appId: "YOUR_APP_ID"
+    apiKey: "AIzaSyA9P8EgF-M3E3Ejo_XVlI98dNXxrT2hWx8",
+    authDomain: "lead-manager-e295e.firebaseapp.com",
+    projectId: "lead-manager-e295e",
+    storageBucket: "lead-manager-e295e.firebasestorage.app",
+    messagingSenderId: "88157245260",
+    appId: "1:88157245260:web:49d430af370c670b5fc9e9"
 };
 
 const INDIAN_CITIES = [
