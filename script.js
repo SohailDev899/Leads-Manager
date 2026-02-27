@@ -1,14 +1,14 @@
 // ---------- CONFIGURATION ----------
 const VALID_USERS = [
     { email: 'sohail@lead.co', password: 'alpha', name: 'Sohail', telegramId: '1935946442', color: '#FF6B6B' },
-    { email: 'angad@lead.co', password: 'beta', name: 'Angad', telegramId: '7312373408', color: '#4ECDC4' },
+    { email: 'angad@lead.co', password: 'beta', name: 'Angad', telegramId: '6825198399', color: '#4ECDC4' },
     { email: 'kishan@lead.co', password: 'gamma', name: 'Kishan', telegramId: '1757459881', color: '#A890FE' }
 ];
 
 const TELEGRAM_BOT_TOKEN = '8591307982:AAEc2CGvK1a2hk5aO9prS1HAhw3AhjxNpTc';
 const STATUS_OPTIONS = ['Interested', 'Not Interested', 'Follow Up', 'No Response'];
 
-// 🔥 APNA FIREBASE CONFIG YAHAN DALO
+// 🔥 YAHAN APNA FIREBASE CONFIG DALO
 const firebaseConfig = {
     apiKey: "AIzaSyA9P8EgF-M3E3Ejo_XVlI98dNXxrT2hWx8",
     authDomain: "lead-manager-e295e.firebaseapp.com",
@@ -116,18 +116,33 @@ class ActivityTracker {
 
 const activityTracker = new ActivityTracker();
 
-// ---------- CLOUD STORAGE ----------
+// ---------- CLOUD STORAGE (FIXED DELETE) ----------
 async function saveLeadsToFirebase(leads) {
     if (!firebaseReady || !db) return;
     try {
+        // Saare leads ko ek baar mein save karo
         const batch = db.batch();
         leads.forEach(lead => {
             const ref = db.collection('leads').doc(lead.id);
             batch.set(ref, lead, { merge: true });
         });
         await batch.commit();
+        console.log('✅ Firebase save successful');
     } catch (error) {
-        console.error('Firebase error:', error);
+        console.error('Firebase save error:', error);
+    }
+}
+
+async function deleteLeadFromFirebase(leadId) {
+    if (!firebaseReady || !db) return;
+    try {
+        // Direct Firebase se delete
+        await db.collection('leads').doc(leadId).delete();
+        console.log('✅ Firebase delete successful for ID:', leadId);
+        return true;
+    } catch (error) {
+        console.error('Firebase delete error:', error);
+        return false;
     }
 }
 
@@ -137,8 +152,10 @@ async function loadLeadsFromFirebase() {
         const snapshot = await db.collection('leads').get();
         const leads = [];
         snapshot.forEach(doc => leads.push(doc.data()));
+        console.log('✅ Firebase loaded:', leads.length, 'leads');
         return leads;
     } catch (error) {
+        console.error('Firebase load error:', error);
         return null;
     }
 }
@@ -153,17 +170,22 @@ function saveLeadsToLocal(leads) {
 }
 
 async function loadLeads() {
+    // Pehle Firebase se try karo
     const fbLeads = await loadLeadsFromFirebase();
     if (fbLeads) {
         saveLeadsToLocal(fbLeads);
         return fbLeads;
     }
+    // Firebase fail to local se lo
     return loadLeadsFromLocal();
 }
 
 async function saveLeads(leads) {
+    // Local mein save
     saveLeadsToLocal(leads);
+    // Firebase mein save
     await saveLeadsToFirebase(leads);
+    // Sync trigger
     localStorage.setItem('leadmanager_sync', Date.now().toString());
 }
 
@@ -216,7 +238,121 @@ function getCityValue() {
     return select.value;
 }
 
-// ---------- RENDER DASHBOARD (EXACT DESIGN) ----------
+// ========== FIXED DELETE FUNCTION (FIREBASE + LOCAL) ==========
+window.deleteLead = async function(id, name) {
+    console.log('🗑️ Delete clicked for:', name, 'ID:', id);
+    
+    if (!id) {
+        alert('Error: Lead ID not found');
+        return;
+    }
+    
+    if (!confirm(`Are you sure you want to delete "${name}"?`)) {
+        return;
+    }
+    
+    const user = getSessionUser();
+    if (!user) {
+        alert('Please login again');
+        window.location = 'index.html';
+        return;
+    }
+    
+    try {
+        // 1. PEHLE FIREBASE SE DELETE KARO
+        console.log('🔥 Deleting from Firebase...');
+        const fbDeleted = await deleteLeadFromFirebase(id);
+        
+        // 2. LOCAL STORAGE SE BHI DELETE KARO
+        console.log('📦 Deleting from localStorage...');
+        const localLeads = loadLeadsFromLocal();
+        const newLocalLeads = localLeads.filter(lead => lead.id !== id);
+        saveLeadsToLocal(newLocalLeads);
+        
+        // 3. ACTIVITY TRACKER
+        activityTracker.addActivity(user, 'deleted', name);
+        
+        // 4. TELEGRAM NOTIFICATION
+        telegram.sendToAll(`🔴 ${user.name} deleted: ${name}`, user.email);
+        
+        // 5. SUCCESS MESSAGE
+        if (fbDeleted) {
+            alert('✅ Lead deleted from Firebase and local storage!');
+        } else {
+            alert('⚠️ Lead deleted from local storage only (Firebase offline)');
+        }
+        
+        // 6. REFRESH DASHBOARD
+        await refreshDashboard();
+        
+    } catch (error) {
+        console.error('❌ Delete error:', error);
+        alert('Error: ' + error.message);
+    }
+};
+
+// ---------- UPDATE LEAD ----------
+window.updateLead = async function(id, field, value) {
+    const user = getSessionUser();
+    const leads = await loadLeads();
+    const lead = leads.find(l => l.id === id);
+    if (lead) {
+        lead[field] = value;
+        lead.updatedAt = new Date().toISOString();
+        await saveLeads(leads);
+        activityTracker.addActivity(user, 'updated', `${field} of ${lead.name}`);
+        telegram.sendToAll(`📝 ${user.name} updated ${lead.name}`, user.email);
+        refreshDashboard();
+    }
+};
+
+// ---------- ADD LEAD ----------
+async function addLead() {
+    const user = getSessionUser();
+    
+    const data = {
+        id: Date.now() + '-' + Math.random().toString(36).substr(2, 8),
+        name: document.getElementById('new-name').value,
+        business: document.getElementById('new-business').value,
+        phone: document.getElementById('new-phone').value,
+        city: getCityValue(),
+        budget: document.getElementById('new-budget').value,
+        pages: document.getElementById('new-pages').value || '1',
+        requirements: document.getElementById('new-requirements').value,
+        status: document.getElementById('new-status').value,
+        note: document.getElementById('new-note').value,
+        createdAt: new Date().toISOString(),
+        createdBy: user.email
+    };
+    
+    if (!data.name || !data.phone || !data.city) {
+        alert('Name, Phone and City are required!');
+        return;
+    }
+    
+    const leads = await loadLeads();
+    leads.push(data);
+    await saveLeads(leads);
+    
+    activityTracker.addActivity(user, 'added', data.name);
+    telegram.sendToAll(`🟢 ${user.name} added ${data.name}`, user.email);
+    
+    // Clear form
+    document.getElementById('new-name').value = '';
+    document.getElementById('new-business').value = '';
+    document.getElementById('new-phone').value = '';
+    document.getElementById('new-city').value = INDIAN_CITIES[0];
+    document.getElementById('new-city-custom').style.display = 'none';
+    document.getElementById('new-budget').value = '';
+    document.getElementById('new-pages').value = '1';
+    document.getElementById('new-requirements').value = '';
+    document.getElementById('new-status').value = STATUS_OPTIONS[0];
+    document.getElementById('new-note').value = '';
+    
+    refreshDashboard();
+}
+
+// ---------- RENDER DASHBOARD ----------
 function renderDashboard(user, leads, activeTab = 'today', activeCity = 'all') {
     // Date grouping
     const today = new Date().toDateString();
@@ -224,7 +360,6 @@ function renderDashboard(user, leads, activeTab = 'today', activeCity = 'all') {
     
     const groups = { today: [], yesterday: [], thisWeek: [], older: [] };
     
-    // This week calculation
     const weekAgo = new Date();
     weekAgo.setDate(weekAgo.getDate() - 7);
     
@@ -251,7 +386,7 @@ function renderDashboard(user, leads, activeTab = 'today', activeCity = 'all') {
     const avgBudget = leads.length ? Math.round(totalBudget/leads.length) : 0;
     const todayCount = groups.today.length;
     
-    // Get unique cities for filter
+    // Cities for filter
     const cities = ['All Cities', ...new Set(leads.map(l => l.city).filter(Boolean))];
     
     return `
@@ -298,121 +433,81 @@ function renderDashboard(user, leads, activeTab = 'today', activeCity = 'all') {
                     `).join('')}
                 </div>
                 
-                <!-- Add Lead Form (EXACT MATCH) -->
+                <!-- Add Lead Form -->
                 <div style="margin-bottom:32px;">
                     <h2 style="font-size:20px; font-weight:600; margin-bottom:16px; color:#1a2639;">Add New Lead</h2>
                     
-                    <!-- Row 1 -->
                     <div style="display:grid; grid-template-columns:1fr 1fr 1fr 1fr; gap:16px; margin-bottom:16px;">
+                        <div><label style="font-size:12px; color:#718096;">CLIENT NAME *</label><input id="new-name" placeholder="Sohail" style="width:100%; padding:10px; border:1px solid #d0d9e3; border-radius:8px;"></div>
+                        <div><label style="font-size:12px; color:#718096;">BUSINESS *</label><input id="new-business" placeholder="Tech Solutions" style="width:100%; padding:10px; border:1px solid #d0d9e3; border-radius:8px;"></div>
+                        <div><label style="font-size:12px; color:#718096;">PHONE *</label><input id="new-phone" placeholder="9876543210" style="width:100%; padding:10px; border:1px solid #d0d9e3; border-radius:8px;"></div>
                         <div>
-                            <label style="display:block; font-size:12px; color:#718096; margin-bottom:4px;">CLIENT NAME *</label>
-                            <input id="new-name" placeholder="Sohail" style="width:100%; padding:10px; border:1px solid #d0d9e3; border-radius:8px;">
-                        </div>
-                        <div>
-                            <label style="display:block; font-size:12px; color:#718096; margin-bottom:4px;">BUSINESS *</label>
-                            <input id="new-business" placeholder="Tech Solutions" style="width:100%; padding:10px; border:1px solid #d0d9e3; border-radius:8px;">
-                        </div>
-                        <div>
-                            <label style="display:block; font-size:12px; color:#718096; margin-bottom:4px;">PHONE *</label>
-                            <input id="new-phone" placeholder="9876543210" style="width:100%; padding:10px; border:1px solid #d0d9e3; border-radius:8px;">
-                        </div>
-                        <div>
-                            <label style="display:block; font-size:12px; color:#718096; margin-bottom:4px;">CITY *</label>
-                            <select id="new-city" onchange="toggleCustomCity(this)" style="width:100%; padding:10px; border:1px solid #d0d9e3; border-radius:8px; background:white;">
+                            <label style="font-size:12px; color:#718096;">CITY *</label>
+                            <select id="new-city" onchange="toggleCustomCity(this)" style="width:100%; padding:10px; border:1px solid #d0d9e3; border-radius:8px;">
                                 ${INDIAN_CITIES.map(c => `<option>${c}</option>`).join('')}
                             </select>
-                            <input id="new-city-custom" style="display:none; margin-top:8px; padding:10px; border:1px solid #d0d9e3; border-radius:8px;" placeholder="Enter city name">
+                            <input id="new-city-custom" style="display:none; margin-top:8px; padding:10px; border:1px solid #d0d9e3; border-radius:8px;" placeholder="Enter city">
                         </div>
                     </div>
                     
-                    <!-- Row 2 -->
                     <div style="display:grid; grid-template-columns:1fr 1fr 1fr 1fr; gap:16px; margin-bottom:16px;">
-                        <div>
-                            <label style="display:block; font-size:12px; color:#718096; margin-bottom:4px;">BUDGET (₹)</label>
-                            <input id="new-budget" type="number" placeholder="50000" style="width:100%; padding:10px; border:1px solid #d0d9e3; border-radius:8px;">
-                        </div>
-                        <div>
-                            <label style="display:block; font-size:12px; color:#718096; margin-bottom:4px;">PAGES</label>
-                            <input id="new-pages" type="number" value="1" style="width:100%; padding:10px; border:1px solid #d0d9e3; border-radius:8px;">
-                        </div>
-                        <div>
-                            <label style="display:block; font-size:12px; color:#718096; margin-bottom:4px;">REQUIREMENTS</label>
-                            <input id="new-requirements" placeholder="E-commerce, Payment" style="width:100%; padding:10px; border:1px solid #d0d9e3; border-radius:8px;">
-                        </div>
-                        <div>
-                            <label style="display:block; font-size:12px; color:#718096; margin-bottom:4px;">STATUS</label>
-                            <select id="new-status" style="width:100%; padding:10px; border:1px solid #d0d9e3; border-radius:8px; background:white;">
-                                ${STATUS_OPTIONS.map(s => `<option>${s}</option>`).join('')}
-                            </select>
-                        </div>
+                        <div><label style="font-size:12px; color:#718096;">BUDGET (₹)</label><input id="new-budget" type="number" placeholder="50000" style="width:100%; padding:10px; border:1px solid #d0d9e3; border-radius:8px;"></div>
+                        <div><label style="font-size:12px; color:#718096;">PAGES</label><input id="new-pages" type="number" value="1" style="width:100%; padding:10px; border:1px solid #d0d9e3; border-radius:8px;"></div>
+                        <div><label style="font-size:12px; color:#718096;">REQUIREMENTS</label><input id="new-requirements" placeholder="E-commerce" style="width:100%; padding:10px; border:1px solid #d0d9e3; border-radius:8px;"></div>
+                        <div><label style="font-size:12px; color:#718096;">STATUS</label><select id="new-status" style="width:100%; padding:10px; border:1px solid #d0d9e3; border-radius:8px;">${STATUS_OPTIONS.map(s => `<option>${s}</option>`).join('')}</select></div>
                     </div>
                     
-                    <!-- Row 3 (Note + Button) -->
-                    <div style="display:grid; grid-template-columns:3fr 1fr; gap:16px; margin-bottom:16px;">
-                        <div>
-                            <label style="display:block; font-size:12px; color:#718096; margin-bottom:4px;">NOTE</label>
-                            <input id="new-note" placeholder="Any notes" style="width:100%; padding:10px; border:1px solid #d0d9e3; border-radius:8px;">
-                        </div>
-                        <div style="display:flex; align-items:flex-end;">
-                            <button id="addLeadBtn" style="width:100%; background:#1a3e6f; color:white; border:none; padding:10px; border-radius:8px; font-weight:500; cursor:pointer;">+ Add Lead</button>
-                        </div>
+                    <div style="display:grid; grid-template-columns:3fr 1fr; gap:16px;">
+                        <div><label style="font-size:12px; color:#718096;">NOTE</label><input id="new-note" placeholder="Any notes" style="width:100%; padding:10px; border:1px solid #d0d9e3; border-radius:8px;"></div>
+                        <div style="display:flex; align-items:flex-end;"><button id="addLeadBtn" style="width:100%; background:#1a3e6f; color:white; border:none; padding:10px; border-radius:8px; cursor:pointer;">+ Add Lead</button></div>
                     </div>
                 </div>
                 
                 <!-- Tabs -->
                 <div style="display:flex; gap:16px; margin-bottom:24px; border-bottom:1px solid #eaeef2; padding-bottom:8px; flex-wrap:wrap;">
-                    <button class="tab-btn" style="padding:8px 0; background:none; border:none; font-size:14px; color:${activeTab === 'today' ? '#1a3e6f' : '#718096'}; font-weight:${activeTab === 'today' ? '600' : '400'}; cursor:pointer; border-bottom:${activeTab === 'today' ? '2px solid #1a3e6f' : 'none'};" onclick="window.location.hash='tab=today'">Today  ${groups.today.length}</button>
-                    <button class="tab-btn" style="padding:8px 0; background:none; border:none; font-size:14px; color:${activeTab === 'yesterday' ? '#1a3e6f' : '#718096'}; font-weight:${activeTab === 'yesterday' ? '600' : '400'}; cursor:pointer; border-bottom:${activeTab === 'yesterday' ? '2px solid #1a3e6f' : 'none'};" onclick="window.location.hash='tab=yesterday'">Yesterday  ${groups.yesterday.length}</button>
-                    <button class="tab-btn" style="padding:8px 0; background:none; border:none; font-size:14px; color:${activeTab === 'thisWeek' ? '#1a3e6f' : '#718096'}; font-weight:${activeTab === 'thisWeek' ? '600' : '400'}; cursor:pointer; border-bottom:${activeTab === 'thisWeek' ? '2px solid #1a3e6f' : 'none'};" onclick="window.location.hash='tab=thisWeek'">This Week  ${groups.thisWeek.length}</button>
-                    <button class="tab-btn" style="padding:8px 0; background:none; border:none; font-size:14px; color:${activeTab === 'older' ? '#1a3e6f' : '#718096'}; font-weight:${activeTab === 'older' ? '600' : '400'}; cursor:pointer; border-bottom:${activeTab === 'older' ? '2px solid #1a3e6f' : 'none'};" onclick="window.location.hash='tab=older'">Older  ${groups.older.length}</button>
-                    <button class="tab-btn" style="padding:8px 0; background:none; border:none; font-size:14px; color:${activeTab === 'all' ? '#1a3e6f' : '#718096'}; font-weight:${activeTab === 'all' ? '600' : '400'}; cursor:pointer; border-bottom:${activeTab === 'all' ? '2px solid #1a3e6f' : 'none'};" onclick="window.location.hash='tab=all'">All  ${leads.length}</button>
+                    <button class="tab-btn" style="padding:8px 0; background:none; border:none; font-size:14px; color:${activeTab === 'today' ? '#1a3e6f' : '#718096'}; font-weight:${activeTab === 'today' ? '600' : '400'}; border-bottom:${activeTab === 'today' ? '2px solid #1a3e6f' : 'none'};" onclick="window.location.hash='tab=today'">Today ${groups.today.length}</button>
+                    <button class="tab-btn" style="padding:8px 0; background:none; border:none; font-size:14px; color:${activeTab === 'yesterday' ? '#1a3e6f' : '#718096'}; font-weight:${activeTab === 'yesterday' ? '600' : '400'}; border-bottom:${activeTab === 'yesterday' ? '2px solid #1a3e6f' : 'none'};" onclick="window.location.hash='tab=yesterday'">Yesterday ${groups.yesterday.length}</button>
+                    <button class="tab-btn" style="padding:8px 0; background:none; border:none; font-size:14px; color:${activeTab === 'thisWeek' ? '#1a3e6f' : '#718096'}; font-weight:${activeTab === 'thisWeek' ? '600' : '400'}; border-bottom:${activeTab === 'thisWeek' ? '2px solid #1a3e6f' : 'none'};" onclick="window.location.hash='tab=thisWeek'">This Week ${groups.thisWeek.length}</button>
+                    <button class="tab-btn" style="padding:8px 0; background:none; border:none; font-size:14px; color:${activeTab === 'older' ? '#1a3e6f' : '#718096'}; font-weight:${activeTab === 'older' ? '600' : '400'}; border-bottom:${activeTab === 'older' ? '2px solid #1a3e6f' : 'none'};" onclick="window.location.hash='tab=older'">Older ${groups.older.length}</button>
+                    <button class="tab-btn" style="padding:8px 0; background:none; border:none; font-size:14px; color:${activeTab === 'all' ? '#1a3e6f' : '#718096'}; font-weight:${activeTab === 'all' ? '600' : '400'}; border-bottom:${activeTab === 'all' ? '2px solid #1a3e6f' : 'none'};" onclick="window.location.hash='tab=all'">All ${leads.length}</button>
                 </div>
                 
                 <!-- Table -->
                 <div style="overflow-x:auto; border:1px solid #eaeef2; border-radius:8px;">
                     <table style="width:100%; border-collapse:collapse;">
-                        <thead>
-                            <tr style="background:#f8fafc; border-bottom:1px solid #eaeef2;">
-                                <th style="padding:12px 16px; text-align:left; font-size:12px; color:#718096; font-weight:600;">Client & City</th>
-                                <th style="padding:12px 16px; text-align:left; font-size:12px; color:#718096; font-weight:600;">Business</th>
-                                <th style="padding:12px 16px; text-align:left; font-size:12px; color:#718096; font-weight:600;">Phone</th>
-                                <th style="padding:12px 16px; text-align:left; font-size:12px; color:#718096; font-weight:600;">Status</th>
-                                <th style="padding:12px 16px; text-align:left; font-size:12px; color:#718096; font-weight:600;">Budget & Pages</th>
-                                <th style="padding:12px 16px; text-align:left; font-size:12px; color:#718096; font-weight:600;">Requirements</th>
-                                <th style="padding:12px 16px; text-align:left; font-size:12px; color:#718096; font-weight:600;">Added By</th>
-                                <th style="padding:12px 16px; text-align:left; font-size:12px; color:#718096; font-weight:600;">Actions</th>
-                            </tr>
-                        </thead>
+                        <thead><tr style="background:#f8fafc;">
+                            <th style="padding:12px; text-align:left;">Client & City</th>
+                            <th style="padding:12px; text-align:left;">Business</th>
+                            <th style="padding:12px; text-align:left;">Phone</th>
+                            <th style="padding:12px; text-align:left;">Status</th>
+                            <th style="padding:12px; text-align:left;">Budget</th>
+                            <th style="padding:12px; text-align:left;">Requirements</th>
+                            <th style="padding:12px; text-align:left;">Added By</th>
+                            <th style="padding:12px; text-align:left;">Actions</th>
+                        </tr></thead>
                         <tbody>
                             ${filteredLeads.map(lead => {
                                 const addedBy = VALID_USERS.find(u => u.email === lead.createdBy) || { name: 'Unknown', color: '#718096' };
                                 return `
-                                <tr style="border-bottom:1px solid #eaeef2;">
-                                    <td style="padding:16px;">
-                                        <div style="font-weight:500;">${lead.name}</div>
-                                        <div style="display:flex; align-items:center; gap:4px; margin-top:4px;">
-                                            <span style="background:#f0f9ff; color:#0369a1; padding:2px 8px; border-radius:12px; font-size:11px;">📍 ${lead.city}</span>
-                                        </div>
-                                        <div style="font-size:10px; color:#a0aec0; margin-top:4px;">Added: ${new Date(lead.createdAt).toLocaleDateString()}</div>
+                                <tr data-id="${lead.id}" style="border-bottom:1px solid #eaeef2;">
+                                    <td style="padding:12px;">
+                                        <div>${lead.name}</div>
+                                        <span style="background:#f0f9ff; color:#0369a1; padding:2px 8px; border-radius:12px; font-size:11px;">📍 ${lead.city}</span>
+                                        <div style="font-size:10px; color:#a0aec0;">${new Date(lead.createdAt).toLocaleDateString()}</div>
                                     </td>
-                                    <td style="padding:16px;">${lead.business || ''}</td>
-                                    <td style="padding:16px;">${lead.phone || ''}</td>
-                                    <td style="padding:16px;">
-                                        <select onchange="updateLeadField('${lead.id}', 'status', this.value)" style="padding:6px 12px; border:1px solid #d0d9e3; border-radius:20px; font-size:12px; background:white;">
+                                    <td style="padding:12px;">${lead.business || ''}</td>
+                                    <td style="padding:12px;">${lead.phone || ''}</td>
+                                    <td style="padding:12px;">
+                                        <select onchange="updateLead('${lead.id}', 'status', this.value)" style="padding:4px 8px; border-radius:12px;">
                                             ${STATUS_OPTIONS.map(s => `<option ${lead.status === s ? 'selected' : ''}>${s}</option>`).join('')}
                                         </select>
                                     </td>
-                                    <td style="padding:16px;">
-                                        <div style="font-weight:500;">₹${lead.budget || 0}</div>
-                                        <div style="font-size:11px; color:#718096;">Pages: ${lead.pages || 1}</div>
-                                    </td>
-                                    <td style="padding:16px; font-size:13px;">${lead.requirements || ''}</td>
-                                    <td style="padding:16px; color:${addedBy.color};">${addedBy.name}</td>
-                                    <td style="padding:16px;">
-                                        <div style="display:flex; gap:8px;">
-                                            <a href="tel:${lead.phone}" style="background:#eef3fa; color:#1f3a68; padding:6px 12px; border-radius:20px; text-decoration:none; font-size:12px; border:1px solid #cbd6e4;">📞 Call</a>
-                                            <button onclick="deleteLead('${lead.id}')" style="background:#fee8e8; color:#b91c1c; border:1px solid #f5c2c2; padding:6px 12px; border-radius:20px; cursor:pointer; font-size:12px;">🗑️</button>
-                                        </div>
+                                    <td style="padding:12px;">₹${lead.budget || 0}<br><small>Pages: ${lead.pages || 1}</small></td>
+                                    <td style="padding:12px;">${lead.requirements || ''}</td>
+                                    <td style="padding:12px; color:${addedBy.color};">${addedBy.name}</td>
+                                    <td style="padding:12px;">
+                                        <a href="tel:${lead.phone}" style="background:#eef3fa; color:#1f3a68; padding:4px 8px; border-radius:12px; text-decoration:none; margin-right:4px;">📞</a>
+                                        <button onclick="deleteLead('${lead.id}', '${lead.name.replace(/'/g, "\\'")}')" style="background:#fee8e8; color:#b91c1c; border:1px solid #f5c2c2; padding:4px 8px; border-radius:12px; cursor:pointer;">🗑️</button>
                                     </td>
                                 </tr>
                             `}).join('')}
@@ -424,81 +519,7 @@ function renderDashboard(user, leads, activeTab = 'today', activeCity = 'all') {
     `;
 }
 
-// ---------- LEAD OPERATIONS ----------
-window.updateLeadField = async function(id, field, value) {
-    const user = getSessionUser();
-    const leads = await loadLeads();
-    const lead = leads.find(l => l.id === id);
-    if (lead) {
-        const oldValue = lead[field];
-        lead[field] = value;
-        lead.updatedAt = new Date().toISOString();
-        await saveLeads(leads);
-        
-        activityTracker.addActivity(user, 'updated', `${field} of ${lead.name}`);
-        telegram.sendToAll(`📝 ${user.name} updated ${field} of ${lead.name}`, user.email);
-        refreshDashboard();
-    }
-};
-
-window.deleteLead = async function(id) {
-    if (!confirm('Delete this lead?')) return;
-    const user = getSessionUser();
-    const leads = await loadLeads();
-    const lead = leads.find(l => l.id === id);
-    const filtered = leads.filter(l => l.id !== id);
-    await saveLeads(filtered);
-    
-    activityTracker.addActivity(user, 'deleted', lead?.name);
-    telegram.sendToAll(`🔴 ${user.name} deleted ${lead?.name}`, user.email);
-    refreshDashboard();
-};
-
-async function addLead() {
-    const user = getSessionUser();
-    
-    const data = {
-        id: Date.now() + '-' + Math.random().toString(36).substr(2, 6),
-        name: document.getElementById('new-name').value,
-        business: document.getElementById('new-business').value,
-        phone: document.getElementById('new-phone').value,
-        city: getCityValue(),
-        budget: document.getElementById('new-budget').value,
-        pages: document.getElementById('new-pages').value || '1',
-        requirements: document.getElementById('new-requirements').value,
-        status: document.getElementById('new-status').value,
-        note: document.getElementById('new-note').value,
-        createdAt: new Date().toISOString(),
-        createdBy: user.email
-    };
-    
-    if (!data.name || !data.phone || !data.city) {
-        alert('Name, Phone and City are required!');
-        return;
-    }
-    
-    const leads = await loadLeads();
-    leads.push(data);
-    await saveLeads(leads);
-    
-    activityTracker.addActivity(user, 'added', data.name);
-    telegram.sendToAll(`🟢 ${user.name} added ${data.name}`, user.email);
-    
-    // Clear form
-    document.getElementById('new-name').value = '';
-    document.getElementById('new-business').value = '';
-    document.getElementById('new-phone').value = '';
-    document.getElementById('new-city').value = INDIAN_CITIES[0];
-    document.getElementById('new-city-custom').style.display = 'none';
-    document.getElementById('new-budget').value = '';
-    document.getElementById('new-pages').value = '1';
-    document.getElementById('new-requirements').value = '';
-    document.getElementById('new-status').value = STATUS_OPTIONS[0];
-    document.getElementById('new-note').value = '';
-    
-    refreshDashboard();
-}
-
+// ---------- REFRESH ----------
 async function refreshDashboard() {
     const user = getSessionUser();
     if (!user) return;
@@ -546,7 +567,7 @@ async function init() {
             return;
         }
         
-        document.getElementById('dashboard-container').innerHTML = '<div style="text-align:center; padding:50px;">Loading Dashboard...</div>';
+        document.getElementById('dashboard-container').innerHTML = '<div style="text-align:center; padding:50px;">Loading...</div>';
         
         await initFirebase();
         await refreshDashboard();
@@ -560,9 +581,7 @@ async function init() {
 
 // Tab sync
 window.addEventListener('storage', (e) => {
-    if (e.key === 'leadmanager_sync' && window.location.pathname.includes('dashboard.html')) {
-        refreshDashboard();
-    }
+    if (e.key === 'leadmanager_sync') refreshDashboard();
 });
 
 // Start
