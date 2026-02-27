@@ -552,7 +552,7 @@ function attachDashboardEvents(user) {
     // Add lead
     const addBtn = document.getElementById('addLeadBtn');
     if (addBtn) {
-        addBtn.addEventListener('click', () =>
+        addBtn.addEventListener('click', () => {
             const name = document.getElementById('new-name')?.value.trim();
             const business = document.getElementById('new-business')?.value.trim();
             const phone = document.getElementById('new-phone')?.value.trim();
@@ -793,4 +793,4 @@ if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', init);
 } else {
     init();
-                }
+}
