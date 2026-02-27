@@ -923,6 +923,71 @@ function init() {
     }
 }
 
+// ---------- CLOUD STORAGE (SABHI DEVICES KE LIYE) ----------
+const CLOUD_URL = 'https://my-json-server.typicode.com/SohailDev899/Leads-Manager/db';
+// sohail/leadmanager ko apne GitHub username/repo se replace karo
+
+// Jab bhi lead add/update ho - cloud mein bhi save karo
+async function syncLeadsToCloud(leads) {
+    try {
+        const response = await fetch(CLOUD_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(leads)
+        });
+        console.log('☁️ Cloud sync:', response.ok);
+    } catch (e) {
+        console.log('Cloud offline - using localStorage only');
+    }
+}
+
+// Jab app start ho - cloud se load karo
+async function loadFromCloud() {
+    try {
+        const response = await fetch(CLOUD_URL);
+        const cloudLeads = await response.json();
+        if (cloudLeads && cloudLeads.length > 0) {
+            localStorage.setItem(STORAGE_KEYS.LEADS, JSON.stringify(cloudLeads));
+            return cloudLeads;
+        }
+    } catch (e) {
+        console.log('Cloud load failed - using localStorage');
+    }
+    return loadLeads(); // fallback to localStorage
+}
+
+// ---------- INIT MEIN CLOUD LOAD KARO ----------
+async function init() {
+    console.log('🔧 Initializing app...');
+    
+    // Pehle cloud se data load karo
+    const cloudLeads = await loadFromCloud();
+    if (cloudLeads) {
+        saveLeads(cloudLeads); // localStorage mein bhi save
+    }
+    
+    // ... rest of init code
+}
+
+// ---------- LEAD ADD KARTE WAQT CLOUD SYNC ----------
+function addLeadWithNotification(leadData, user) {
+    const leads = loadLeads();
+    const newLead = {
+        id: Date.now() + '-' + Math.random().toString(36).substr(2, 8),
+        ...leadData,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+    };
+    
+    leads.push(newLead);
+    saveLeads(leads);
+    
+    // Cloud mein bhi save karo
+    syncLeadsToCloud(leads);
+    
+    // ... rest of function
+}
+
 // Start app
 console.log('🏁 Starting app...');
 if (document.readyState === 'loading') {
