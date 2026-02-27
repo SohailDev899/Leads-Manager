@@ -1,21 +1,21 @@
 // ---------- CONFIGURATION ----------
 const VALID_USERS = [
-    { email: 'sohail@lead.co', password: 'alpha', name: 'Sohail', telegramId: '1935946442' },
-    { email: 'angad@lead.co', password: 'beta', name: 'Angad', telegramId: '7312373408' },
-    { email: 'kishan@lead.co', password: 'gamma', name: 'Kishan', telegramId: '1757459881' }
+    { email: 'sohail@lead.co', password: 'alpha', name: 'Sohail', telegramId: '1935946442', color: '#FF6B6B' },
+    { email: 'angad@lead.co', password: 'beta', name: 'Angad', telegramId: '7312373408', color: '#4ECDC4' },
+    { email: 'kishan@lead.co', password: 'gamma', name: 'Kishan', telegramId: '1757459881', color: '#A890FE' }
 ];
 
 const TELEGRAM_BOT_TOKEN = '8591307982:AAEc2CGvK1a2hk5aO9prS1HAhw3AhjxNpTc';
 const STATUS_OPTIONS = ['Interested', 'Not Interested', 'Follow Up', 'No Response'];
 
-// 🔥 APNA FIREBASE CONFIG YAHAN DALO (Step 3 se copy kiya tha)
+// 🔥 APNA FIREBASE CONFIG YAHAN DALO
 const firebaseConfig = {
     apiKey: "AIzaSyA9P8EgF-M3E3Ejo_XVlI98dNXxrT2hWx8",
     authDomain: "lead-manager-e295e.firebaseapp.com",
     projectId: "lead-manager-e295e",
     storageBucket: "lead-manager-e295e.firebasestorage.app",
     messagingSenderId: "88157245260",
-    appId: "1:88157245260:web:49d430af370c670b5fc9e9",
+    appId: "1:88157245260:web:49d430af370c670b5fc9e9"
 };
 
 // Indian cities
@@ -26,42 +26,124 @@ const INDIAN_CITIES = [
     'Vadodara', 'Guwahati', 'Chandigarh', 'Other'
 ];
 
-// ---------- FIREBASE INITIALIZATION ----------
+// ---------- FIREBASE INITIALIZATION (FIXED) ----------
 let db = null;
 let firebaseReady = false;
 
-// Firebase scripts load karo
-async function initFirebase() {
+// Firebase scripts load karo - SIMPLE TARIQA
+function initFirebase() {
     return new Promise((resolve) => {
+        // Pehle se load hai to skip
+        if (window.firebase) {
+            db = firebase.firestore();
+            firebaseReady = true;
+            console.log('🔥 Firebase already ready');
+            resolve();
+            return;
+        }
+
         // Firebase App script
         const appScript = document.createElement('script');
-        appScript.src = 'https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js';
-        document.head.appendChild(appScript);
-        
+        appScript.src = 'https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js';
         appScript.onload = () => {
             // Firebase Firestore script
             const firestoreScript = document.createElement('script');
-            firestoreScript.src = 'https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js';
-            document.head.appendChild(firestoreScript);
-            
+            firestoreScript.src = 'https://www.gstatic.com/firebasejs/8.10.0/firebase-firestore.js';
             firestoreScript.onload = () => {
-                // Firebase initialize karo
+                // Firebase initialize
                 firebase.initializeApp(firebaseConfig);
                 db = firebase.firestore();
                 firebaseReady = true;
                 console.log('🔥 Firebase ready!');
                 resolve();
             };
+            document.head.appendChild(firestoreScript);
         };
+        document.head.appendChild(appScript);
     });
 }
+
+// ---------- ACTIVITY TRACKER (Kaun kya kar raha hai) ----------
+class ActivityTracker {
+    constructor() {
+        this.activities = this.loadActivities();
+    }
+
+    loadActivities() {
+        return JSON.parse(localStorage.getItem('activities') || '[]');
+    }
+
+    saveActivities() {
+        // Sirf last 50 activities rakho
+        if (this.activities.length > 50) {
+            this.activities = this.activities.slice(-50);
+        }
+        localStorage.setItem('activities', JSON.stringify(this.activities));
+    }
+
+    addActivity(user, action, details) {
+        const activity = {
+            id: Date.now() + '-' + Math.random().toString(36).substr(2, 4),
+            user: user.name,
+            userEmail: user.email,
+            userColor: user.color || '#667eea',
+            action: action,
+            details: details,
+            timestamp: new Date().toISOString(),
+            time: new Date().toLocaleTimeString()
+        };
+        
+        this.activities.push(activity);
+        this.saveActivities();
+        
+        // Activity panel update karo
+        this.updateActivityPanel();
+        
+        return activity;
+    }
+
+    updateActivityPanel() {
+        const panel = document.getElementById('activity-panel');
+        if (!panel) return;
+        
+        panel.innerHTML = this.activities.reverse().slice(0, 10).map(a => `
+            <div style="padding:8px; border-bottom:1px solid #e2e8f0; font-size:12px;">
+                <span style="color:${a.userColor}; font-weight:bold;">${a.user}</span>
+                <span style="color:#718096;"> ${a.action}</span>
+                <span style="color:#a0aec0;"> ${a.details}</span>
+                <div style="color:#a0aec0; font-size:10px; margin-top:2px;">${a.time}</div>
+            </div>
+        `).join('');
+    }
+
+    getActivityHTML() {
+        return `
+            <div style="background:white; border-radius:8px; margin-bottom:20px; border:1px solid #e2e8f0;">
+                <div style="padding:10px; background:#f7fafc; border-bottom:1px solid #e2e8f0; font-weight:600;">
+                    📋 Live Activity Feed
+                </div>
+                <div id="activity-panel" style="max-height:200px; overflow-y:auto;">
+                    ${this.activities.slice(-10).reverse().map(a => `
+                        <div style="padding:8px; border-bottom:1px solid #e2e8f0; font-size:12px;">
+                            <span style="color:${a.userColor}; font-weight:bold;">${a.user}</span>
+                            <span style="color:#718096;"> ${a.action}</span>
+                            <span style="color:#a0aec0;"> ${a.details}</span>
+                            <div style="color:#a0aec0; font-size:10px; margin-top:2px;">${a.time}</div>
+                        </div>
+                    `).join('')}
+                </div>
+            </div>
+        `;
+    }
+}
+
+const activityTracker = new ActivityTracker();
 
 // ---------- CLOUD STORAGE FUNCTIONS ----------
 async function saveLeadsToFirebase(leads) {
     if (!firebaseReady) return;
     
     try {
-        // Saare leads ek saath save karo
         const batch = db.batch();
         leads.forEach(lead => {
             const ref = db.collection('leads').doc(lead.id);
@@ -101,25 +183,17 @@ function saveLeadsToLocal(leads) {
 
 // ---------- MAIN LEAD FUNCTIONS ----------
 async function loadLeads() {
-    // Pehle Firebase se try karo
     const fbLeads = await loadLeadsFromFirebase();
     if (fbLeads) {
-        saveLeadsToLocal(fbLeads); // Local mein bhi save
+        saveLeadsToLocal(fbLeads);
         return fbLeads;
     }
-    
-    // Firebase fail to local se lo
     return loadLeadsFromLocal();
 }
 
 async function saveLeads(leads) {
-    // Local mein save karo
     saveLeadsToLocal(leads);
-    
-    // Firebase mein bhi save karo
     await saveLeadsToFirebase(leads);
-    
-    // Doosre tabs ko batado
     localStorage.setItem('leadmanager_sync', Date.now().toString());
 }
 
@@ -209,19 +283,22 @@ function renderDashboard(user, leads, activeTab = 'all', activeCity = 'all') {
         <div class="top-bar">
             <span class="logo">📋 Lead Manager</span>
             <div class="user-badge">
-                <span>${user.name} (${user.email})</span>
+                <span style="color:${user.color};">${user.name} (${user.email})</span>
                 <button class="logout-btn" id="logoutBtn">Logout</button>
             </div>
         </div>
         
         <div class="content">
-            <!-- Status -->
-            <div style="margin-bottom: 20px; padding: 10px; background: #f0f9ff; border-radius: 8px;">
-                <span>🔥 Firebase Cloud Sync Active</span>
-                <span style="margin-left: 20px;">📱 Telegram Active</span>
-                <span style="margin-left: 20px;">📊 Total Leads: ${leads.length}</span>
-                <span style="margin-left: 20px;">💰 Total: ₹${totalBudget.toLocaleString()}</span>
+            <!-- Status Bar -->
+            <div style="margin-bottom: 20px; padding: 10px; background: #f0f9ff; border-radius: 8px; display: flex; gap: 20px; flex-wrap: wrap;">
+                <span>🔥 Firebase: ${firebaseReady ? '✅' : '⏳'}</span>
+                <span>📱 Telegram: ✅</span>
+                <span>📊 Total Leads: ${leads.length}</span>
+                <span>💰 Budget: ₹${totalBudget.toLocaleString()}</span>
             </div>
+            
+            <!-- Activity Feed -->
+            ${activityTracker.getActivityHTML()}
             
             <!-- City Filters -->
             <div style="margin-bottom: 20px; display: flex; gap: 10px; flex-wrap: wrap;">
@@ -253,7 +330,7 @@ function renderDashboard(user, leads, activeTab = 'all', activeCity = 'all') {
             </div>
             
             <!-- Tabs -->
-            <div style="display: flex; gap: 10px; margin-bottom: 20px;">
+            <div style="display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap;">
                 ${['all', 'today', 'yesterday', 'older'].map(t => `
                     <button class="tab-btn" style="padding:8px 16px; border:1px solid #ccc; border-radius:6px; background:${activeTab === t ? '#667eea' : 'white'}; color:${activeTab === t ? 'white' : 'black'}; cursor:pointer;" onclick="window.location.hash='tab=${t}'">
                         ${t} (${t === 'all' ? leads.length : groups[t].length})
@@ -273,11 +350,14 @@ function renderDashboard(user, leads, activeTab = 'all', activeCity = 'all') {
                             <th>Budget & Pages</th>
                             <th>Requirements</th>
                             <th>Note</th>
+                            <th>Added By</th>
                             <th>Actions</th>
                         </tr>
                     </thead>
                     <tbody>
-                        ${filteredLeads.map(lead => `
+                        ${filteredLeads.map(lead => {
+                            const addedBy = VALID_USERS.find(u => u.email === lead.createdBy) || { name: 'Unknown', color: '#718096' };
+                            return `
                             <tr data-id="${lead.id}">
                                 <td>
                                     <strong>${lead.name}</strong>
@@ -292,17 +372,18 @@ function renderDashboard(user, leads, activeTab = 'all', activeCity = 'all') {
                                     </select>
                                 </td>
                                 <td>
-                                    ₹<input value="${lead.budget || ''}" style="width:80px;" onchange="updateLeadField('${lead.id}', 'budget', this.value)">
-                                    <br>📄 <input value="${lead.pages || 1}" style="width:40px;" onchange="updateLeadField('${lead.id}', 'pages', this.value)">
+                                    ₹<input value="${lead.budget || ''}" style="width:70px;" onchange="updateLeadField('${lead.id}', 'budget', this.value)">
+                                    📄<input value="${lead.pages || 1}" style="width:40px;" onchange="updateLeadField('${lead.id}', 'pages', this.value)">
                                 </td>
                                 <td><input value="${lead.requirements || ''}" onchange="updateLeadField('${lead.id}', 'requirements', this.value)"></td>
                                 <td><input value="${lead.note || ''}" onchange="updateLeadField('${lead.id}', 'note', this.value)"></td>
+                                <td><span style="color:${addedBy.color};">${addedBy.name}</span></td>
                                 <td>
                                     <a href="tel:${lead.phone}" class="call-btn">📞</a>
                                     <button class="delete-btn" onclick="deleteLead('${lead.id}')">🗑️</button>
                                 </td>
                             </tr>
-                        `).join('')}
+                        `}).join('')}
                     </tbody>
                 </table>
             </div>
@@ -316,10 +397,15 @@ window.updateLeadField = async function(id, field, value) {
     const leads = await loadLeads();
     const lead = leads.find(l => l.id === id);
     if (lead) {
+        const oldValue = lead[field];
         lead[field] = value;
         lead.updatedAt = new Date().toISOString();
         await saveLeads(leads);
         
+        // Track activity
+        activityTracker.addActivity(user, 'updated', `${field} of ${lead.name} from "${oldValue}" to "${value}"`);
+        
+        // Telegram
         telegram.sendToAll(`📝 ${user.name} updated ${field} for ${lead.name}`, user.email);
         refreshDashboard();
     }
@@ -333,6 +419,10 @@ window.deleteLead = async function(id) {
     const filtered = leads.filter(l => l.id !== id);
     await saveLeads(filtered);
     
+    // Track activity
+    activityTracker.addActivity(user, 'deleted', `lead: ${lead?.name}`);
+    
+    // Telegram
     telegram.sendToAll(`🔴 ${user.name} deleted lead: ${lead?.name}`, user.email);
     refreshDashboard();
 };
@@ -364,7 +454,11 @@ async function addLead() {
     leads.push(data);
     await saveLeads(leads);
     
-    telegram.sendToAll(`🟢 New lead: ${data.name} (${data.city}) by ${user.name}`, user.email);
+    // Track activity
+    activityTracker.addActivity(user, 'added', `new lead: ${data.name} (${data.city})`);
+    
+    // Telegram
+    telegram.sendToAll(`🟢 ${user.name} added new lead: ${data.name} (${data.city})`, user.email);
     
     // Clear form
     document.getElementById('new-name').value = '';
@@ -411,6 +505,10 @@ function doLogin() {
     
     if (user) {
         localStorage.setItem('session', JSON.stringify(user));
+        
+        // Track login activity
+        activityTracker.addActivity(user, 'logged in', '');
+        
         window.location = 'dashboard.html';
     } else {
         document.getElementById('login-error').style.display = 'block';
@@ -422,7 +520,7 @@ async function init() {
     const path = window.location.pathname.split('/').pop() || 'index.html';
     
     if (path === 'dashboard.html') {
-        // Firebase initialize karo
+        // Firebase initialize
         await initFirebase();
         
         const user = getSessionUser();
