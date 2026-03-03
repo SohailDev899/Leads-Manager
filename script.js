@@ -8,7 +8,7 @@ const VALID_USERS = [
 const TELEGRAM_BOT_TOKEN = '8591307982:AAEc2CGvK1a2hk5aO9prS1HAhw3AhjxNpTc';
 const STATUS_OPTIONS = ['Interested', 'Not Interested', 'Follow Up', 'No Response'];
 
-// 🔥 YAHAN APNA FIREBASE CONFIG DALO
+// 🔥 APNA FIREBASE CONFIG YAHAN DALO
 const firebaseConfig = {
     apiKey: "AIzaSyA9P8EgF-M3E3Ejo_XVlI98dNXxrT2hWx8",
     authDomain: "lead-manager-e295e.firebaseapp.com",
@@ -116,27 +116,10 @@ class ActivityTracker {
 
 const activityTracker = new ActivityTracker();
 
-// ---------- CLOUD STORAGE (FIXED DELETE) ----------
-async function saveLeadsToFirebase(leads) {
-    if (!firebaseReady || !db) return;
-    try {
-        // Saare leads ko ek baar mein save karo
-        const batch = db.batch();
-        leads.forEach(lead => {
-            const ref = db.collection('leads').doc(lead.id);
-            batch.set(ref, lead, { merge: true });
-        });
-        await batch.commit();
-        console.log('✅ Firebase save successful');
-    } catch (error) {
-        console.error('Firebase save error:', error);
-    }
-}
-
+// ---------- CLOUD STORAGE ----------
 async function deleteLeadFromFirebase(leadId) {
     if (!firebaseReady || !db) return;
     try {
-        // Direct Firebase se delete
         await db.collection('leads').doc(leadId).delete();
         console.log('✅ Firebase delete successful for ID:', leadId);
         return true;
@@ -152,10 +135,8 @@ async function loadLeadsFromFirebase() {
         const snapshot = await db.collection('leads').get();
         const leads = [];
         snapshot.forEach(doc => leads.push(doc.data()));
-        console.log('✅ Firebase loaded:', leads.length, 'leads');
         return leads;
     } catch (error) {
-        console.error('Firebase load error:', error);
         return null;
     }
 }
@@ -169,23 +150,32 @@ function saveLeadsToLocal(leads) {
     localStorage.setItem('leads', JSON.stringify(leads));
 }
 
+async function saveLeadsToFirebase(leads) {
+    if (!firebaseReady || !db) return;
+    try {
+        const batch = db.batch();
+        leads.forEach(lead => {
+            const ref = db.collection('leads').doc(lead.id);
+            batch.set(ref, lead, { merge: true });
+        });
+        await batch.commit();
+    } catch (error) {
+        console.error('Firebase save error:', error);
+    }
+}
+
 async function loadLeads() {
-    // Pehle Firebase se try karo
     const fbLeads = await loadLeadsFromFirebase();
     if (fbLeads) {
         saveLeadsToLocal(fbLeads);
         return fbLeads;
     }
-    // Firebase fail to local se lo
     return loadLeadsFromLocal();
 }
 
 async function saveLeads(leads) {
-    // Local mein save
     saveLeadsToLocal(leads);
-    // Firebase mein save
     await saveLeadsToFirebase(leads);
-    // Sync trigger
     localStorage.setItem('leadmanager_sync', Date.now().toString());
 }
 
@@ -238,10 +228,8 @@ function getCityValue() {
     return select.value;
 }
 
-// ========== FIXED DELETE FUNCTION (FIREBASE + LOCAL) ==========
+// ========== FIXED DELETE FUNCTION ==========
 window.deleteLead = async function(id, name) {
-    console.log('🗑️ Delete clicked for:', name, 'ID:', id);
-    
     if (!id) {
         alert('Error: Lead ID not found');
         return;
@@ -259,30 +247,16 @@ window.deleteLead = async function(id, name) {
     }
     
     try {
-        // 1. PEHLE FIREBASE SE DELETE KARO
-        console.log('🔥 Deleting from Firebase...');
-        const fbDeleted = await deleteLeadFromFirebase(id);
+        await deleteLeadFromFirebase(id);
         
-        // 2. LOCAL STORAGE SE BHI DELETE KARO
-        console.log('📦 Deleting from localStorage...');
         const localLeads = loadLeadsFromLocal();
         const newLocalLeads = localLeads.filter(lead => lead.id !== id);
         saveLeadsToLocal(newLocalLeads);
         
-        // 3. ACTIVITY TRACKER
         activityTracker.addActivity(user, 'deleted', name);
-        
-        // 4. TELEGRAM NOTIFICATION
         telegram.sendToAll(`🔴 ${user.name} deleted: ${name}`, user.email);
         
-        // 5. SUCCESS MESSAGE
-        if (fbDeleted) {
-            alert('✅ Lead deleted from Firebase and local storage!');
-        } else {
-            alert('⚠️ Lead deleted from local storage only (Firebase offline)');
-        }
-        
-        // 6. REFRESH DASHBOARD
+        alert('✅ Lead deleted successfully!');
         await refreshDashboard();
         
     } catch (error) {
@@ -337,7 +311,6 @@ async function addLead() {
     activityTracker.addActivity(user, 'added', data.name);
     telegram.sendToAll(`🟢 ${user.name} added ${data.name}`, user.email);
     
-    // Clear form
     document.getElementById('new-name').value = '';
     document.getElementById('new-business').value = '';
     document.getElementById('new-phone').value = '';
@@ -352,7 +325,7 @@ async function addLead() {
     refreshDashboard();
 }
 
-// ---------- RENDER DASHBOARD ----------
+// ========== FIXED RENDER DASHBOARD WITH WORKING TABS ==========
 function renderDashboard(user, leads, activeTab = 'today', activeCity = 'all') {
     // Date grouping
     const today = new Date().toDateString();
@@ -373,12 +346,13 @@ function renderDashboard(user, leads, activeTab = 'today', activeCity = 'all') {
         else groups.older.push(lead);
     });
     
-    // Filter by city
+    // Filter by city and tab
     let filteredLeads = [];
     if (activeTab === 'all') {
         filteredLeads = activeCity === 'all' ? leads : leads.filter(l => l.city === activeCity);
     } else {
-        filteredLeads = activeCity === 'all' ? groups[activeTab] : groups[activeTab].filter(l => l.city === activeCity);
+        const groupLeads = groups[activeTab] || [];
+        filteredLeads = activeCity === 'all' ? groupLeads : groupLeads.filter(l => l.city === activeCity);
     }
     
     // Totals
@@ -426,11 +400,14 @@ function renderDashboard(user, leads, activeTab = 'today', activeCity = 'all') {
                 
                 <!-- City Filters -->
                 <div style="display:flex; gap:12px; margin-bottom:24px; flex-wrap:wrap;">
-                    ${cities.map(city => `
-                        <button class="city-filter" style="padding:8px 20px; border:1px solid #d0d9e3; border-radius:20px; background:${activeCity === city || (city === 'All Cities' && activeCity === 'all') ? '#1a3e6f' : 'white'}; color:${activeCity === city || (city === 'All Cities' && activeCity === 'all') ? 'white' : '#1a2639'}; cursor:pointer;" onclick="window.location.hash='city=${city === 'All Cities' ? 'all' : city}'">
-                            ${city === 'All Cities' ? '🏢 All Cities' : `📍 ${city}`}
-                        </button>
-                    `).join('')}
+                    ${cities.map(city => {
+                        const cityValue = city === 'All Cities' ? 'all' : city;
+                        return `
+                            <button class="city-filter" data-city="${cityValue}" style="padding:8px 20px; border:1px solid #d0d9e3; border-radius:20px; background:${(city === 'All Cities' && activeCity === 'all') || city === activeCity ? '#1a3e6f' : 'white'}; color:${(city === 'All Cities' && activeCity === 'all') || city === activeCity ? 'white' : '#1a2639'}; cursor:pointer;">
+                                ${city === 'All Cities' ? '🏢 All Cities' : `📍 ${city}`}
+                            </button>
+                        `;
+                    }).join('')}
                 </div>
                 
                 <!-- Add Lead Form -->
@@ -463,13 +440,13 @@ function renderDashboard(user, leads, activeTab = 'today', activeCity = 'all') {
                     </div>
                 </div>
                 
-                <!-- Tabs -->
+                <!-- Tabs with data attributes -->
                 <div style="display:flex; gap:16px; margin-bottom:24px; border-bottom:1px solid #eaeef2; padding-bottom:8px; flex-wrap:wrap;">
-                    <button class="tab-btn" style="padding:8px 0; background:none; border:none; font-size:14px; color:${activeTab === 'today' ? '#1a3e6f' : '#718096'}; font-weight:${activeTab === 'today' ? '600' : '400'}; border-bottom:${activeTab === 'today' ? '2px solid #1a3e6f' : 'none'};" onclick="window.location.hash='tab=today'">Today ${groups.today.length}</button>
-                    <button class="tab-btn" style="padding:8px 0; background:none; border:none; font-size:14px; color:${activeTab === 'yesterday' ? '#1a3e6f' : '#718096'}; font-weight:${activeTab === 'yesterday' ? '600' : '400'}; border-bottom:${activeTab === 'yesterday' ? '2px solid #1a3e6f' : 'none'};" onclick="window.location.hash='tab=yesterday'">Yesterday ${groups.yesterday.length}</button>
-                    <button class="tab-btn" style="padding:8px 0; background:none; border:none; font-size:14px; color:${activeTab === 'thisWeek' ? '#1a3e6f' : '#718096'}; font-weight:${activeTab === 'thisWeek' ? '600' : '400'}; border-bottom:${activeTab === 'thisWeek' ? '2px solid #1a3e6f' : 'none'};" onclick="window.location.hash='tab=thisWeek'">This Week ${groups.thisWeek.length}</button>
-                    <button class="tab-btn" style="padding:8px 0; background:none; border:none; font-size:14px; color:${activeTab === 'older' ? '#1a3e6f' : '#718096'}; font-weight:${activeTab === 'older' ? '600' : '400'}; border-bottom:${activeTab === 'older' ? '2px solid #1a3e6f' : 'none'};" onclick="window.location.hash='tab=older'">Older ${groups.older.length}</button>
-                    <button class="tab-btn" style="padding:8px 0; background:none; border:none; font-size:14px; color:${activeTab === 'all' ? '#1a3e6f' : '#718096'}; font-weight:${activeTab === 'all' ? '600' : '400'}; border-bottom:${activeTab === 'all' ? '2px solid #1a3e6f' : 'none'};" onclick="window.location.hash='tab=all'">All ${leads.length}</button>
+                    <button class="tab-btn" data-tab="today" style="padding:8px 0; background:none; border:none; font-size:14px; color:${activeTab === 'today' ? '#1a3e6f' : '#718096'}; font-weight:${activeTab === 'today' ? '600' : '400'}; border-bottom:${activeTab === 'today' ? '2px solid #1a3e6f' : 'none'}; cursor:pointer;">Today (${groups.today.length})</button>
+                    <button class="tab-btn" data-tab="yesterday" style="padding:8px 0; background:none; border:none; font-size:14px; color:${activeTab === 'yesterday' ? '#1a3e6f' : '#718096'}; font-weight:${activeTab === 'yesterday' ? '600' : '400'}; border-bottom:${activeTab === 'yesterday' ? '2px solid #1a3e6f' : 'none'}; cursor:pointer;">Yesterday (${groups.yesterday.length})</button>
+                    <button class="tab-btn" data-tab="thisWeek" style="padding:8px 0; background:none; border:none; font-size:14px; color:${activeTab === 'thisWeek' ? '#1a3e6f' : '#718096'}; font-weight:${activeTab === 'thisWeek' ? '600' : '400'}; border-bottom:${activeTab === 'thisWeek' ? '2px solid #1a3e6f' : 'none'}; cursor:pointer;">This Week (${groups.thisWeek.length})</button>
+                    <button class="tab-btn" data-tab="older" style="padding:8px 0; background:none; border:none; font-size:14px; color:${activeTab === 'older' ? '#1a3e6f' : '#718096'}; font-weight:${activeTab === 'older' ? '600' : '400'}; border-bottom:${activeTab === 'older' ? '2px solid #1a3e6f' : 'none'}; cursor:pointer;">Older (${groups.older.length})</button>
+                    <button class="tab-btn" data-tab="all" style="padding:8px 0; background:none; border:none; font-size:14px; color:${activeTab === 'all' ? '#1a3e6f' : '#718096'}; font-weight:${activeTab === 'all' ? '600' : '400'}; border-bottom:${activeTab === 'all' ? '2px solid #1a3e6f' : 'none'}; cursor:pointer;">All (${leads.length})</button>
                 </div>
                 
                 <!-- Table -->
@@ -486,37 +463,76 @@ function renderDashboard(user, leads, activeTab = 'today', activeCity = 'all') {
                             <th style="padding:12px; text-align:left;">Actions</th>
                         </tr></thead>
                         <tbody>
-                            ${filteredLeads.map(lead => {
-                                const addedBy = VALID_USERS.find(u => u.email === lead.createdBy) || { name: 'Unknown', color: '#718096' };
-                                return `
-                                <tr data-id="${lead.id}" style="border-bottom:1px solid #eaeef2;">
-                                    <td style="padding:12px;">
-                                        <div>${lead.name}</div>
-                                        <span style="background:#f0f9ff; color:#0369a1; padding:2px 8px; border-radius:12px; font-size:11px;">📍 ${lead.city}</span>
-                                        <div style="font-size:10px; color:#a0aec0;">${new Date(lead.createdAt).toLocaleDateString()}</div>
-                                    </td>
-                                    <td style="padding:12px;">${lead.business || ''}</td>
-                                    <td style="padding:12px;">${lead.phone || ''}</td>
-                                    <td style="padding:12px;">
-                                        <select onchange="updateLead('${lead.id}', 'status', this.value)" style="padding:4px 8px; border-radius:12px;">
-                                            ${STATUS_OPTIONS.map(s => `<option ${lead.status === s ? 'selected' : ''}>${s}</option>`).join('')}
-                                        </select>
-                                    </td>
-                                    <td style="padding:12px;">₹${lead.budget || 0}<br><small>Pages: ${lead.pages || 1}</small></td>
-                                    <td style="padding:12px;">${lead.requirements || ''}</td>
-                                    <td style="padding:12px; color:${addedBy.color};">${addedBy.name}</td>
-                                    <td style="padding:12px;">
-                                        <a href="tel:${lead.phone}" style="background:#eef3fa; color:#1f3a68; padding:4px 8px; border-radius:12px; text-decoration:none; margin-right:4px;">📞</a>
-                                        <button onclick="deleteLead('${lead.id}', '${lead.name.replace(/'/g, "\\'")}')" style="background:#fee8e8; color:#b91c1c; border:1px solid #f5c2c2; padding:4px 8px; border-radius:12px; cursor:pointer;">🗑️</button>
-                                    </td>
-                                </tr>
-                            `}).join('')}
+                            ${filteredLeads.length === 0 ? 
+                                `<tr><td colspan="8" style="padding:40px; text-align:center; color:#718096;">No leads in this section</td></tr>` :
+                                filteredLeads.map(lead => {
+                                    const addedBy = VALID_USERS.find(u => u.email === lead.createdBy) || { name: 'Unknown', color: '#718096' };
+                                    return `
+                                    <tr data-id="${lead.id}" style="border-bottom:1px solid #eaeef2;">
+                                        <td style="padding:12px;">
+                                            <div>${lead.name}</div>
+                                            <span style="background:#f0f9ff; color:#0369a1; padding:2px 8px; border-radius:12px; font-size:11px;">📍 ${lead.city}</span>
+                                            <div style="font-size:10px; color:#a0aec0;">${new Date(lead.createdAt).toLocaleDateString()}</div>
+                                        </td>
+                                        <td style="padding:12px;">${lead.business || ''}</td>
+                                        <td style="padding:12px;">${lead.phone || ''}</td>
+                                        <td style="padding:12px;">
+                                            <select onchange="updateLead('${lead.id}', 'status', this.value)" style="padding:4px 8px; border-radius:12px;">
+                                                ${STATUS_OPTIONS.map(s => `<option ${lead.status === s ? 'selected' : ''}>${s}</option>`).join('')}
+                                            </select>
+                                        </td>
+                                        <td style="padding:12px;">₹${lead.budget || 0}<br><small>Pages: ${lead.pages || 1}</small></td>
+                                        <td style="padding:12px;">${lead.requirements || ''}</td>
+                                        <td style="padding:12px; color:${addedBy.color};">${addedBy.name}</td>
+                                        <td style="padding:12px;">
+                                            <a href="tel:${lead.phone}" style="background:#eef3fa; color:#1f3a68; padding:4px 8px; border-radius:12px; text-decoration:none; margin-right:4px;">📞</a>
+                                            <button onclick="deleteLead('${lead.id}', '${lead.name.replace(/'/g, "\\'")}')" style="background:#fee8e8; color:#b91c1c; border:1px solid #f5c2c2; padding:4px 8px; border-radius:12px; cursor:pointer;">🗑️</button>
+                                        </td>
+                                    </tr>
+                                `}).join('')
+                            }
                         </tbody>
                     </table>
                 </div>
             </div>
         </div>
     `;
+}
+
+// ========== FIXED EVENT HANDLERS ==========
+function attachEvents() {
+    // Tab clicks
+    document.querySelectorAll('.tab-btn').forEach(btn => {
+        btn.addEventListener('click', function(e) {
+            e.preventDefault();
+            const tab = this.getAttribute('data-tab');
+            if (tab) {
+                window.location.hash = `tab=${tab}`;
+                refreshDashboard();
+            }
+        });
+    });
+    
+    // City filter clicks
+    document.querySelectorAll('.city-filter').forEach(btn => {
+        btn.addEventListener('click', function(e) {
+            e.preventDefault();
+            const city = this.getAttribute('data-city');
+            if (city) {
+                window.location.hash = `city=${city}`;
+                refreshDashboard();
+            }
+        });
+    });
+    
+    // Logout
+    document.getElementById('logoutBtn')?.addEventListener('click', () => {
+        localStorage.removeItem('session');
+        window.location = 'index.html';
+    });
+    
+    // Add lead
+    document.getElementById('addLeadBtn')?.addEventListener('click', addLead);
 }
 
 // ---------- REFRESH ----------
@@ -527,18 +543,14 @@ async function refreshDashboard() {
     const leads = await loadLeads();
     const hash = window.location.hash.slice(1);
     const params = new URLSearchParams(hash);
+    const activeTab = params.get('tab') || 'today';
+    const activeCity = params.get('city') || 'all';
     
     document.getElementById('dashboard-container').innerHTML = renderDashboard(
-        user, leads,
-        params.get('tab') || 'today',
-        params.get('city') || 'all'
+        user, leads, activeTab, activeCity
     );
     
-    document.getElementById('addLeadBtn')?.addEventListener('click', addLead);
-    document.getElementById('logoutBtn')?.addEventListener('click', () => {
-        localStorage.removeItem('session');
-        window.location = 'index.html';
-    });
+    attachEvents(); // Re-attach events after render
 }
 
 // ---------- LOGIN ----------
@@ -579,9 +591,18 @@ async function init() {
     }
 }
 
+// Hash change bhi listen karo
+window.addEventListener('hashchange', () => {
+    if (window.location.pathname.includes('dashboard.html')) {
+        refreshDashboard();
+    }
+});
+
 // Tab sync
 window.addEventListener('storage', (e) => {
-    if (e.key === 'leadmanager_sync') refreshDashboard();
+    if (e.key === 'leadmanager_sync' && window.location.pathname.includes('dashboard.html')) {
+        refreshDashboard();
+    }
 });
 
 // Start
